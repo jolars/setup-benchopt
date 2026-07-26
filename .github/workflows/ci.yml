@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    # Run every Monday at 7:42am UTC.
+    - cron: "42 7 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-conda:
+    name: Conda (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    # Plain bash, no login shell: the action puts benchopt and the conda
+    # environment on PATH for subsequent steps.
+    defaults:
+      run:
+        shell: bash
+    env:
+      BENCHOPT_DEBUG: 1
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out template benchmark
+        uses: actions/checkout@v7
+        with:
+          repository: benchopt/template_benchmark
+          path: benchmark
+
+      - name: Setup benchopt
+        id: setup
+        uses: ./
+
+      - name: Check installation
+        run: |
+          test -n "${{ steps.setup.outputs.benchopt-version }}"
+          benchopt --version
+
+      - name: Test benchmark
+        run: benchopt test benchmark --env-name bench_test_env -vl
+
+  test-pip:
+    name: Pip only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup benchopt
+        id: setup
+        uses: ./
+        with:
+          conda: false
+
+      - name: Check installation
+        run: |
+          test -n "${{ steps.setup.outputs.benchopt-version }}"
+          benchopt --version
+
+  test-git-version:
+    name: Install from git
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup benchopt
+        uses: ./
+        with:
+          conda: false
+          version: git
+          branch: benchopt@main
+
+      - name: Check installation
+        run: benchopt --version
+
+  all-tests-passed:
+    name: All tests passed
+    runs-on: ubuntu-latest
+    needs:
+      - test-conda
+      - test-pip
+      - test-git-version
+    if: always()
+    steps:
+      - name: Check previous jobs
+        shell: bash
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+
+  versionary:
+    name: Versionary
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: all-tests-passed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - uses: jolars/versionary@v0
+        with:
+          github-token: ${{ secrets.RELEASE_TOKEN }}

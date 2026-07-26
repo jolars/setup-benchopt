@@ -1,0 +1,101 @@
+name: "Setup Benchopt"
+description: >-
+  Install benchopt and, optionally, the conda toolchain it uses to manage
+  benchmark environments.
+author: "Johan Larsson"
+
+branding:
+  icon: "bar-chart-2"
+  color: "blue"
+
+inputs:
+  version:
+    description: >-
+      The version of benchopt to install. Use "latest" for the most recent
+      PyPI release, "git" to install from GitHub (see `branch`), or an exact
+      version number such as "1.7.0".
+    required: false
+    default: "latest"
+  branch:
+    description: >-
+      The GitHub fork and branch to install benchopt from when `version` is
+      "git", in the form "user@branch".
+    required: false
+    default: "benchopt@main"
+  python-version:
+    description: "The Python version used to install benchopt."
+    required: false
+    default: "3.12"
+  conda:
+    description: >-
+      Whether to set up miniforge and mamba, which benchopt uses to create
+      benchmark environments. Set to "false" to install benchopt into a plain
+      Python environment instead.
+    required: false
+    default: "true"
+  environment-name:
+    description: "Name of the conda environment benchopt is installed into."
+    required: false
+    default: "benchopt"
+  cache-dir:
+    description: >-
+      Directories to cache between runs, for instance benchmark data
+      directories. Useful to avoid repeated downloads that might hit rate
+      limits.
+    required: false
+    default: ""
+
+outputs:
+  benchopt-version:
+    description: "The version of benchopt that was installed."
+    value: ${{ steps.install-conda.outputs.version || steps.install.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up miniforge
+      if: inputs.conda == 'true'
+      uses: conda-incubator/setup-miniconda@v4
+      with:
+        auto-update-conda: true
+        miniforge-version: latest
+        use-mamba: true
+        channels: conda-forge
+        python-version: ${{ inputs.python-version }}
+        activate-environment: ${{ inputs.environment-name }}
+
+    - name: Set up Python
+      if: inputs.conda != 'true'
+      uses: actions/setup-python@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Cache directories
+      if: inputs.cache-dir != ''
+      uses: actions/cache@v6
+      with:
+        path: ${{ inputs.cache-dir }}
+        key: ${{ runner.os }}-benchopt-${{ inputs.cache-dir }}
+
+    - name: Configure benchopt
+      if: inputs.conda == 'true'
+      shell: bash
+      run: echo "BENCHOPT_CONDA_CMD=mamba" >> "$GITHUB_ENV"
+
+    - name: Install benchopt
+      if: inputs.conda == 'true'
+      id: install-conda
+      shell: bash -el {0}
+      env:
+        SETUP_BENCHOPT_VERSION: ${{ inputs.version }}
+        SETUP_BENCHOPT_BRANCH: ${{ inputs.branch }}
+      run: bash "$GITHUB_ACTION_PATH/install.sh"
+
+    - name: Install benchopt
+      if: inputs.conda != 'true'
+      id: install
+      shell: bash
+      env:
+        SETUP_BENCHOPT_VERSION: ${{ inputs.version }}
+        SETUP_BENCHOPT_BRANCH: ${{ inputs.branch }}
+      run: bash "$GITHUB_ACTION_PATH/install.sh"
