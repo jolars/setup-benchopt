@@ -82,6 +82,15 @@ runs:
       shell: bash
       run: echo "BENCHOPT_CONDA_CMD=mamba" >> "$GITHUB_ENV"
 
+    - name: Configure benchopt for Windows
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        # benchopt runs its conda subcommands through $SHELL, and on Windows it
+        # needs cmd: it prepends CALL to conda and only writes a proper .bat when
+        # 'cmd' is in $SHELL. Otherwise it fails with "call: command not found".
+        echo "BENCHOPT_SHELL=cmd /c" >> "$GITHUB_ENV"
+
     - name: Install benchopt
       if: inputs.conda == 'true'
       id: install-conda
