@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.0](https://github.com/jolars/setup-benchopt/compare/v1.0.0...v1.1.0) (2026-08-07)
+
+### Features
+- shorten PATH on Windows to fit cmd's limit ([`049052d`](https://github.com/jolars/setup-benchopt/commit/049052d74efd6f2550deb957c7cd831adbcc3581))
+
 ## [1.0.0](https://github.com/jolars/setup-benchopt/compare/v0.0.0...v1.0.0) (2026-07-26)
 
 ### Breaking changes
