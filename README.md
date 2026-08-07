@@ -60,6 +60,7 @@ running with `--no-env`, you can skip the miniforge setup entirely:
 | `conda`            | `true`          | Whether to set up miniforge and mamba for benchopt's environment management.                                             |
 | `environment-name` | `benchopt`      | Name of the conda environment benchopt is installed into.                                                                |
 | `cache-dir`        | `""`            | Directories to cache between runs, for instance benchmark data.                                                          |
+| `shorten-windows-path` | `true`      | On Windows, replace `PATH` with a minimal set of directories for the rest of the job. See the note below.                 |
 
 ## Outputs
 
@@ -79,6 +80,14 @@ running with `--no-env`, you can skip the miniforge setup entirely:
 - With `conda: true`, the action sets `BENCHOPT_CONDA_CMD=mamba` so that
   benchopt uses mamba to create environments.
 - The action works on Linux, macOS, and Windows runners.
+- On Windows, benchopt drives conda through `cmd`, which inlines the whole
+  `PATH` into the batch scripts it generates. The stock runner `PATH` is long
+  enough that installing a `pip::` requirement overflows cmd's 8191-character
+  command-line limit and fails with `The input line is too long`. The action
+  therefore rebuilds `PATH` from the conda toolchain, git, and the Windows
+  system directories, for the remainder of the job. If later steps need other
+  tools from the runner image, set `shorten-windows-path: false` and keep
+  `PATH` short some other way.
 
 ## Relation to `template_benchmark`
 

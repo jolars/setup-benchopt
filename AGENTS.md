@@ -16,12 +16,18 @@ Two files carry all the logic:
 
 - **`action.yml`** — the composite action definition. It declares the inputs
   (`version`, `branch`, `python-version`, `conda`, `environment-name`,
-  `cache-dir`) and orchestrates steps: set up miniforge *or* plain Python
-  (mutually exclusive on `inputs.conda`), optionally cache directories, set
-  `BENCHOPT_CONDA_CMD=mamba`, then run `install.sh`. The `install.sh` step is
-  duplicated with two different shells and step ids (`install-conda` uses
-  `bash -el {0}` login shell; `install` uses plain `bash`); the
-  `benchopt-version` output falls back between the two step ids.
+  `cache-dir`, `shorten-windows-path`) and orchestrates steps: set up miniforge
+  *or* plain Python (mutually exclusive on `inputs.conda`), optionally cache
+  directories, set `BENCHOPT_CONDA_CMD=mamba`, then run `install.sh`. The
+  `install.sh` step is duplicated with two different shells and step ids
+  (`install-conda` uses `bash -el {0}` login shell; `install` uses plain
+  `bash`); the `benchopt-version` output falls back between the two step ids.
+  A final Windows-only step rebuilds `PATH` from an allowlist, because
+  benchopt's `cmd`-based conda calls inline `PATH` and overflow cmd's
+  8191-character limit. It runs last so that installing benchopt itself still
+  sees the full runner `PATH`; directories added via `GITHUB_PATH` (including
+  the conda environment that `install.sh` exports) are prepended by the runner
+  afterwards and so survive the rewrite.
 
 - **`install.sh`** — reads `SETUP_BENCHOPT_VERSION` and `SETUP_BENCHOPT_BRANCH`
   (passed in as `env:` by `action.yml`) and pip-installs benchopt accordingly:

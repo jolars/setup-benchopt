@@ -44,6 +44,15 @@ inputs:
       limits.
     required: false
     default: ""
+  shorten-windows-path:
+    description: >-
+      On Windows runners, replace PATH with a minimal set of directories for
+      the rest of the job. benchopt installs pip requirements through `cmd`,
+      which inlines the whole PATH and overflows its 8191-character limit on
+      the stock runner PATH. Set to "false" if later steps in the job need
+      tools from the runner image that this drops.
+    required: false
+    default: "true"
 
 outputs:
   benchopt-version:
@@ -108,3 +117,59 @@ runs:
         SETUP_BENCHOPT_VERSION: ${{ inputs.version }}
         SETUP_BENCHOPT_BRANCH: ${{ inputs.branch }}
       run: bash "$GITHUB_ACTION_PATH/install.sh"
+
+    # Runs last, so that installing benchopt itself still sees the full runner
+    # PATH. Directories that earlier steps added through GITHUB_PATH, including
+    # the conda environment that install.sh exports, are prepended to whatever
+    # PATH holds, so they survive this.
+    - name: Shorten PATH on Windows
+      if: >-
+        runner.os == 'Windows' && inputs.conda == 'true'
+        && inputs.shorten-windows-path == 'true'
+      shell: pwsh
+      env:
+        SETUP_BENCHOPT_ENV_NAME: ${{ inputs.environment-name }}
+      run: |
+        # benchopt drives conda through `cmd /c`, and both conda activation and
+        # mamba's pip integration inline the whole PATH into the batch script
+        # they generate. The stock runner PATH is long enough that installing a
+        # `pip::` requirement overflows cmd's 8191-character command-line limit
+        # and fails with "The input line is too long". Rebuild PATH with only
+        # what benchopt needs: the conda toolchain, git for `pip::git+` and for
+        # the sh.exe that some packages shell out to, and the Windows system
+        # directories.
+        $conda = $env:CONDA
+        if (-not $conda) { throw "CONDA is not set; cannot rebuild PATH" }
+        $envDir = Join-Path $conda "envs\$env:SETUP_BENCHOPT_ENV_NAME"
+
+        # Locate git rather than assuming C:\Program Files\Git; dropping it
+        # would break `pip::git+` requirements.
+        $git = Get-Command git.exe -ErrorAction SilentlyContinue
+        $gitDirs = if ($git) {
+          $gitRoot = Split-Path -Parent (Split-Path -Parent $git.Source)
+          @((Join-Path $gitRoot "cmd"), (Join-Path $gitRoot "bin"))
+        } else {
+          @("C:\Program Files\Git\cmd", "C:\Program Files\Git\bin")
+        }
+
+        $candidates = @(
+          $envDir
+          (Join-Path $envDir "Scripts")
+          (Join-Path $envDir "Library\bin")
+          $conda
+          (Join-Path $conda "Scripts")
+          (Join-Path $conda "Library\bin")
+          (Join-Path $conda "condabin")
+          $gitDirs
+          (Join-Path $env:SystemRoot "System32")
+          $env:SystemRoot
+          (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0")
+          (Join-Path $env:SystemRoot "System32\OpenSSH")
+        )
+        $kept = $candidates |
+          Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
+          Select-Object -Unique
+        $shortened = $kept -join ";"
+
+        Write-Host "Shortened PATH from $($env:PATH.Length) to $($shortened.Length) characters"
+        "PATH=$shortened" >> $env:GITHUB_ENV

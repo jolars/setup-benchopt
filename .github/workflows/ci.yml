@@ -37,6 +37,19 @@ jobs:
           repository: benchopt/template_benchmark
           path: benchmark
 
+      - name: Add a pip requirement to the benchmark
+        # benchopt installs pip requirements by handing conda a batch script
+        # that inlines the whole PATH, which is what overflows cmd's
+        # command-line limit on Windows. The template benchmark has no pip
+        # requirement of its own, so add one to keep the PATH shortening in
+        # action.yml covered. Bash substitution rather than sed, which is not
+        # portable across the GNU, BSD, and Git for Windows runners.
+        run: |
+          solver=benchmark/solvers/python-gd.py
+          content=$(cat "$solver")
+          printf '%s\n' "${content/requirements = \[\]/requirements = [\"pip::six\"]}" > "$solver"
+          grep -n 'requirements' "$solver"
+
       - name: Setup benchopt
         id: setup
         uses: ./
